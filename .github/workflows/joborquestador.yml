@@ -1,1 +1,38 @@
+name: Orquestador CERT
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar workflow CERT
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          repository: ricardops2211/repo-jira
+          event-type: trigger-cert
+          client-payload: |
+            {
+              "workflow": "deploy-cert.yml",
+              "branch": "main"
+            }
+
+  get-rc-tag:
+    needs: cert
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar artifact RC Tag desde CERT
+        uses: actions/download-artifact@v4
+        with:
+          name: rc-tag
+          path: ./artifact
+
+      - name: Leer RC Tag
+        id: read
+        run: |
+          TAG=$(jq -r '.rc_tag' ./artifact/rc_tag.json)
+          echo "✅ RC Tag encontrado: $TAG"
+          echo "rc_tag=$TAG" >> $GITHUB_OUTPUT
 
