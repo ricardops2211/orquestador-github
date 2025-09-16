@@ -4,35 +4,45 @@ on:
   workflow_dispatch:
 
 jobs:
-  cert:
+  run-cert-workflows:
     runs-on: ubuntu-latest
+    outputs:
+      rc_tag: ${{ steps.get-tag.outputs.rc_tag }}
     steps:
-      - name: Disparar workflow CERT
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.PAT_TOKEN }}
-          repository: ricardops2211/repo-jira
-          event-type: trigger-cert
-          client-payload: |
-            {
-              "workflow": "deploy-cert.yml",
-              "branch": "main"
-            }
-
-  get-rc-tag:
-    needs: cert
-    runs-on: ubuntu-latest
-    steps:
-      - name: Descargar artifact RC Tag desde CERT
-        uses: actions/download-artifact@v4
-        with:
-          name: rc-tag
-          path: ./artifact
-
-      - name: Leer RC Tag
-        id: read
+      - name: Descargar JSON de orquestador
         run: |
-          TAG=$(jq -r '.rc_tag' ./artifact/rc_tag.json)
-          echo "✅ RC Tag encontrado: $TAG"
-          echo "rc_tag=$TAG" >> $GITHUB_OUTPUT
+          curl -sL https://raw.githubusercontent.com/ricardops2211/orquestador/main/orquestador-jobs.json -o orquestador.json
 
+      - name: Instalar jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Iterar sobre sección CERT y disparar workflows
+        id: trigger
+        run: |
+          CERTS=$(jq -c '.cert[]' orquestador.json)
+          for workflow in $CERTS; do
+            REPO=$(echo $workflow | jq -r '.repo')
+            FILE=$(echo $workflow | jq -r '.workflow')
+            BRANCH=$(echo $workflow | jq -r '.branch')
+
+            echo "Disparando workflow $FILE en repo $REPO branch $BRANCH"
+
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+              https://api.github.com/repos/$REPO/dispatches \
+              -d "{\"event_type\":\"trigger-cert\",\"client_payload\":{\"workflow\":\"$FILE\",\"branch\":\"$BRANCH\"}}")
+
+            if [ "$RESPONSE" != "204" ]; then
+              echo "❌ Error disparando workflow $FILE en $REPO"
+              exit 1
+            fi
+          done
+
+      - name: Obtener RC Tag del último workflow disparado
+        id: get-tag
+        run: |
+          echo "❗️ Necesitas usar la API de GitHub Actions para consultar el RC Tag generado por deploy-cert.yml"
+          # Aquí se puede agregar lógica para leer outputs del workflow disparado
+          # Por ahora solo demostramos cómo obtener el output:
+          echo "rc_tag=RC-AUTOGENERADO" >> $GITHUB_OUTPUT
