@@ -24,79 +24,54 @@ jobs:
       - name: Instalar jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Iterar sobre sección CERT y disparar workflows
-        id: trigger
+      - name: Disparar workflow deploy-cert
+        id: trigger-cert
         run: |
-          CERTS=$(jq -c '.cert[]' orquestador-jobs.json)
-          for workflow in $CERTS; do
-            REPO=$(echo $workflow | jq -r '.repo')
-            FILE=$(echo $workflow | jq -r '.workflow')
-            BRANCH=$(echo $workflow | jq -r '.branch')
+          REPO="ricardops2211/repo-jira"
+          WORKFLOW_ID="deploy-cert.yml"
 
-            echo "Disparando workflow $FILE en repo $REPO branch $BRANCH"
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/$REPO/dispatches \
+            -d '{"event_type":"trigger-cert"}')
 
-            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-              https://api.github.com/repos/$REPO/dispatches \
-              -d "{\"event_type\":\"trigger-cert\",\"client_payload\":{\"workflow\":\"$FILE\",\"branch\":\"$BRANCH\"}}")
+          echo "🔔 Workflow dispatch enviado. Esperando a que aparezca el run..."
+          
+          # Listar runs recientes y tomar el último
+          RUN_ID=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?per_page=1" \
+            | jq -r '.workflow_runs[0].id')
 
-            if [ "$RESPONSE" != "204" ]; then
-              echo "❌ Error disparando workflow $FILE en $REPO"
-              exit 1
-            fi
-          done
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+
 
       - name: Esperar que termine el workflow deploy-cert
         id: wait
         run: |
           set -euo pipefail
-
           REPO="ricardops2211/repo-jira"
-          WORKFLOW_ID="deploy-cert.yml"
-          BRANCH="main"
+          RUN_ID="${{ steps.trigger-cert.outputs.run_id }}"
 
-          echo "⏳ Esperando a que termine $WORKFLOW_ID..."
-
-          START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "📌 Timestamp de inicio: $START_TIME"
+          echo "⏳ Esperando run $RUN_ID en $REPO..."
 
           for i in {1..30}; do
-            RUN_JSON=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            RUN=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
               -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?branch=$BRANCH&event=repository_dispatch&per_page=5")
+              "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID")
 
-            # 👀 Debug para ver qué devuelve la API
-            echo "---- Response ----"
-            echo "$RUN_JSON" | head -n 20
-            echo "------------------"
-
-            if [ -z "$RUN_JSON" ]; then
-              echo "⚠️ API devolvió vacío, reintentando..."
-              sleep 10
-              continue
-            fi
-
-            RUN_ID=$(echo "$RUN_JSON" | jq -r --arg start "$START_TIME" '.workflow_runs[] | select(.created_at > $start) | .id' | head -n 1)
-
-            if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
-              echo "⌛ Todavía no aparece el nuevo run... esperando 10s"
-              sleep 10
-              continue
-            fi
-
-            STATUS=$(echo "$RUN_JSON" | jq -r --arg id "$RUN_ID" '.workflow_runs[] | select(.id == ($id|tonumber)) | .status')
-            CONCLUSION=$(echo "$RUN_JSON" | jq -r --arg id "$RUN_ID" '.workflow_runs[] | select(.id == ($id|tonumber)) | .conclusion')
+            STATUS=$(echo "$RUN" | jq -r '.status')
+            CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
 
             echo "🔎 Run $RUN_ID → status=$STATUS conclusion=$CONCLUSION"
 
             if [ "$STATUS" == "completed" ]; then
               if [ "$CONCLUSION" == "success" ]; then
-                echo "✅ Workflow terminado con éxito."
-                echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+                echo "✅ Workflow terminó bien"
                 exit 0
               else
-                echo "❌ Workflow falló con conclusión: $CONCLUSION"
+                echo "❌ Workflow terminó con fallo ($CONCLUSION)"
                 exit 1
               fi
             fi
@@ -105,8 +80,9 @@ jobs:
             sleep 20
           done
 
-          echo "❌ Timeout esperando el workflow $WORKFLOW_ID"
+          echo "❌ Timeout esperando run $RUN_ID"
           exit 1
+
           
       - name: Reemplazar RC Tag en orquestador-jobs.json
         run: |
