@@ -47,15 +47,56 @@ jobs:
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
 
 
-      - name: Esperar que termine el workflow deploy-cert
+      - name: Disparar workflow deploy-cert
+        id: trigger
+        run: |
+          REPO="ricardops2211/repo-jira"
+          WORKFLOW_ID="deploy-cert.yml"
+
+          # Tomamos el timestamp actual (antes de disparar)
+          START_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "start_ts=$START_TS" >> $GITHUB_OUTPUT
+
+          echo "🚀 Disparando workflow..."
+          curl -s -X POST \
+            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/$REPO/dispatches \
+            -d '{"event_type":"trigger-cert"}'
+
+      - name: Esperar workflow deploy-cert
         id: wait
         run: |
           set -euo pipefail
           REPO="ricardops2211/repo-jira"
-          RUN_ID="${{ steps.trigger-cert.outputs.run_id }}"
+          WORKFLOW_ID="deploy-cert.yml"
+          START_TS="${{ steps.trigger.outputs.start_ts }}"
 
-          echo "⏳ Esperando run $RUN_ID en $REPO..."
+          echo "📌 Timestamp de inicio: $START_TS"
 
+          for i in {1..30}; do
+            RUNS=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?event=repository_dispatch&per_page=5")
+
+            # Filtrar solo runs posteriores al timestamp
+            RUN_ID=$(echo "$RUNS" | jq -r --arg ts "$START_TS" '.workflow_runs[] | select(.created_at > $ts) | .id' | head -n 1)
+
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+              echo "🎯 Encontrado run nuevo: $RUN_ID"
+              break
+            fi
+
+            echo "⌛ Esperando a que aparezca el run..."
+            sleep 10
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "❌ No se encontró run nuevo después de $START_TS"
+            exit 1
+          fi
+
+          # Polling al run específico
           for i in {1..30}; do
             RUN=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
               -H "Accept: application/vnd.github+json" \
@@ -76,7 +117,6 @@ jobs:
               fi
             fi
 
-            echo "⌛ Aún en ejecución... esperando 20s"
             sleep 20
           done
 
