@@ -1,18 +1,9 @@
-
 {
   "cert": [
     {
       "repo": "ricardops2211/repo-jira",
       "workflow": "deploy-cert.yml",
       "branch": "main"
-    }
-  ],
-  "prod": [
-    {
-      "repo": "ricardops2211/repo-jira",
-      "workflow": "deploy-prod.yml",
-      "branch": "main",
-      "tag_name": "PONER-RCTAGNAME"
     }
   ],
   "version": "2.0.0"
