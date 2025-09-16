@@ -19,7 +19,7 @@ jobs:
       
       - name: Iterar sobre sección CERT
         run: |
-          CERTS=$(jq -c '.cert[]' orquestador.json)
+          CERTS=$(jq -c '.cert[]' orquestador-jobs.json)
           for workflow in $CERTS; do
             echo $workflow
           done
