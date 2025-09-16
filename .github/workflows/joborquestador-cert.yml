@@ -56,13 +56,24 @@ jobs:
 
           echo "⏳ Esperando a que termine $WORKFLOW_ID..."
 
+          # Guardar timestamp actual (antes de esperar runs nuevos)
+          START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "📌 Timestamp de inicio: $START_TIME"
+
           for i in {1..30}; do
             RUN_JSON=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-              "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?branch=$BRANCH&event=repository_dispatch&per_page=1")
+              "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?branch=$BRANCH&event=repository_dispatch&per_page=3")
 
-            STATUS=$(echo "$RUN_JSON" | jq -r '.workflow_runs[0].status')
-            CONCLUSION=$(echo "$RUN_JSON" | jq -r '.workflow_runs[0].conclusion')
-            RUN_ID=$(echo "$RUN_JSON" | jq -r '.workflow_runs[0].id')
+            # Filtrar solo los runs creados después de START_TIME
+            RUN_ID=$(echo "$RUN_JSON" | jq -r --arg start "$START_TIME" '.workflow_runs[] | select(.created_at > $start) | .id' | head -n 1)
+            STATUS=$(echo "$RUN_JSON" | jq -r --arg id "$RUN_ID" '.workflow_runs[] | select(.id == ($id|tonumber)) | .status')
+            CONCLUSION=$(echo "$RUN_JSON" | jq -r --arg id "$RUN_ID" '.workflow_runs[] | select(.id == ($id|tonumber)) | .conclusion')
+
+            if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
+              echo "⌛ Todavía no aparece el nuevo run... esperando 10s"
+              sleep 10
+              continue
+            fi
 
             echo "🔎 Run $RUN_ID → status=$STATUS conclusion=$CONCLUSION"
 
@@ -84,28 +95,3 @@ jobs:
           echo "❌ Timeout esperando el workflow $WORKFLOW_ID"
           exit 1
 
-      - name: Obtener RC Tag del workflow terminado
-        id: get-tag
-        run: |
-          REPO="ricardops2211/repo-jira"
-          RUN_ID="${{ steps.wait.outputs.run_id }}"
-
-          echo "📥 Obteniendo RC Tag del run $RUN_ID..."
-
-          JOBS_JSON=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/jobs")
-
-          RC_TAG=$(echo $JOBS_JSON | jq -r '.jobs[] | select(.name=="release-cert") | .steps[] | select(.name=="Generar RC Tag dinámico") | .outputs.rc_tag')
-
-          echo "✅ RC Tag obtenido: $RC_TAG"
-          echo "rc_tag=$RC_TAG" >> $GITHUB_OUTPUT
-
-      - name: Reemplazar RC Tag en orquestador-jobs.json
-        run: |
-          RC_TAG="${{ steps.get-tag.outputs.rc_tag }}"
-          echo "🔧 Reemplazando PONER-RCTAGNAME por $RC_TAG en orquestador-jobs.json"
-
-          jq --arg tag "$RC_TAG" '.prod[0].tag_name = $tag' orquestador-jobs.json > tmp.json && mv tmp.json orquestador-jobs.json
-
-          echo "📄 Archivo final:"
-          cat orquestador-jobs.json
