@@ -107,10 +107,23 @@ jobs:
           echo "❌ Timeout esperando run $RUN_ID"
           exit 1
 
-      - name: Mostrar Issue Key de Jira
+      - name: Transicionar ticket en Jira
         run: |
+          # Variables
           ISSUE_KEY="${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}"
-          echo "🔑 Issue Key recibido: $ISSUE_KEY"
+          TRANSITION_ID="10"
+
+          echo "➡️ Transicionando issue $ISSUE_KEY a RATIFICACION"
+
+          # Llamada a la API de Jira
+          curl -s -X POST \
+            -H "Authorization: Basic ${{ secrets.JIRA_AUTH }}" \
+            -H "Content-Type: application/json" \
+            --data "{\"transition\":{\"id\":\"$TRANSITION_ID\"}}" \
+            "https://marketingpachas.atlassian.net/rest/api/3/issue/${ISSUE_KEY}/transitions"
+
+          echo "✅ Petición de transición enviada para $ISSUE_KEY con id=$TRANSITION_ID"
+
 
 
 
