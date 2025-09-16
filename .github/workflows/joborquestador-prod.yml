@@ -1,6 +1,8 @@
 name: Orquestador PROD
 
 on:
+  repository_dispatch:
+    types: [jira-prdouccion]
   workflow_dispatch:
 
 permissions:
