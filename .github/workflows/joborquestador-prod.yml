@@ -2,7 +2,7 @@ name: Orquestador PROD
 
 on:
   repository_dispatch:
-    types: [jira-orquestador-produccion]
+    types: [jira-orquestador-producciosnss]
   workflow_dispatch:
     inputs:
       issue_key:
@@ -111,7 +111,7 @@ jobs:
         env:
           JIRA_USER: ${{ secrets.JIRA_USER }}
           JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
-          ISSUE_KEY: ${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}
+          ISSUE_KEY: ${{ github.event.inputs.issue_key }}
           TRANSITION_ID: "10"
           JIRA_SITE: "https://marketingpachas.atlassian.net"
         run: |
