@@ -2,7 +2,7 @@ name: Orquestador CERT
 
 on:
   repository_dispatch:
-    types: [jira-orquestador-certificacionssss]
+    types: [jira-orquestador-certificacion]
   workflow_dispatch:
 
 permissions:
