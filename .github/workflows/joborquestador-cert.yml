@@ -47,33 +47,65 @@ jobs:
             fi
           done
 
-      - name: Esperar 30 segundos para que el workflow deploy-cert empiece
-        run: sleep 30
-
-      - name: Obtener RC Tag del workflow deploy-cert
-        id: get-tag
+      - name: Esperar que termine el workflow deploy-cert
+        id: wait
         run: |
           REPO="ricardops2211/repo-jira"
           WORKFLOW_ID="deploy-cert.yml"
           BRANCH="main"
 
-          echo "Consultando último run del workflow $WORKFLOW_ID en $REPO..."
+          echo "⏳ Esperando a que termine $WORKFLOW_ID..."
 
-          # Obtener el ID del último workflow run disparado por repository_dispatch
-          RUN_ID=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?branch=$BRANCH&event=repository_dispatch&per_page=1" \
-            | jq '.workflow_runs[0].id')
+          for i in {1..30}; do
+            RUN_JSON=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+              "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?branch=$BRANCH&event=repository_dispatch&per_page=1")
 
-          echo "Último run ID: $RUN_ID"
+            STATUS=$(echo "$RUN_JSON" | jq -r '.workflow_runs[0].status')
+            CONCLUSION=$(echo "$RUN_JSON" | jq -r '.workflow_runs[0].conclusion')
+            RUN_ID=$(echo "$RUN_JSON" | jq -r '.workflow_runs[0].id')
 
-          # Obtener los jobs del workflow run
+            echo "🔎 Run $RUN_ID → status=$STATUS conclusion=$CONCLUSION"
+
+            if [ "$STATUS" == "completed" ]; then
+              if [ "$CONCLUSION" == "success" ]; then
+                echo "✅ Workflow terminado con éxito."
+                echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+                exit 0
+              else
+                echo "❌ Workflow falló con conclusión: $CONCLUSION"
+                exit 1
+              fi
+            fi
+
+            echo "⌛ Aún en ejecución... esperando 20s"
+            sleep 20
+          done
+
+          echo "❌ Timeout esperando el workflow $WORKFLOW_ID"
+          exit 1
+
+      - name: Obtener RC Tag del workflow terminado
+        id: get-tag
+        run: |
+          REPO="ricardops2211/repo-jira"
+          RUN_ID="${{ steps.wait.outputs.run_id }}"
+
+          echo "📥 Obteniendo RC Tag del run $RUN_ID..."
+
           JOBS_JSON=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
             "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/jobs")
 
-          # Extraer el output rc_tag del job release-cert
           RC_TAG=$(echo $JOBS_JSON | jq -r '.jobs[] | select(.name=="release-cert") | .steps[] | select(.name=="Generar RC Tag dinámico") | .outputs.rc_tag')
 
           echo "✅ RC Tag obtenido: $RC_TAG"
-
-          # Guardar como output del job
           echo "rc_tag=$RC_TAG" >> $GITHUB_OUTPUT
+
+      - name: Reemplazar RC Tag en orquestador-jobs.json
+        run: |
+          RC_TAG="${{ steps.get-tag.outputs.rc_tag }}"
+          echo "🔧 Reemplazando PONER-RCTAGNAME por $RC_TAG en orquestador-jobs.json"
+
+          jq --arg tag "$RC_TAG" '.prod[0].tag_name = $tag' orquestador-jobs.json > tmp.json && mv tmp.json orquestador-jobs.json
+
+          echo "📄 Archivo final:"
+          cat orquestador-jobs.json
