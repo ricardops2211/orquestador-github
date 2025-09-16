@@ -11,7 +11,7 @@
       "repo": "ricardops2211/repo-jira",
       "workflow": "deploy-prod.yml",
       "branch": "main",
-      "tag_name": "RC-20250916-630c"
+      "tag_name": "RC-20250916-c12c"
     }
   ],
   "version": "2.0.0"
