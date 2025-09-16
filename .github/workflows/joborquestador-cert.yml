@@ -159,4 +159,12 @@ jobs:
           echo "📄 Archivo final:"
           cat orquestador-jobs.json
 
+      - name: Commit & Push cambios en main
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add orquestador-jobs.json
+          git commit -m "🔖 Update prod tag_name con RC Tag ${{ steps.get-tag.outputs.rc_tag }}"
+          git push origin main
+
 
