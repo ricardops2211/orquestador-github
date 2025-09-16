@@ -190,7 +190,7 @@ jobs:
           git add orquestador-jobs.json
           git commit -m "🔖 Update prod tag_name con RC Tag ${{ steps.get-tag.outputs.rc_tag }}" || echo "No hay cambios que commitear"
 
-          git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/ricardops2211/orquestador-github.git main
+          git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/ricardops2211/orquestador-github.git "orquestador/$ISSUE_KEY"
 
 
 
