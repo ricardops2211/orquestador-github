@@ -39,31 +39,33 @@ jobs:
             fi
           done
 
-      - name: Obtener RC Tag real del último workflow disparado
+      - name: Esperar 30 segundos para que el workflow de CERT empiece
+        run: sleep 30
+
+      - name: Obtener RC Tag del workflow deploy-cert
         id: get-tag
         run: |
           REPO="ricardops2211/repo-jira"
           WORKFLOW_ID="deploy-cert.yml"
           BRANCH="main"
-      
+
           echo "Consultando último run del workflow $WORKFLOW_ID en $REPO..."
-      
+
           # Obtener el ID del último workflow run disparado por repository_dispatch
           RUN_ID=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
             "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?branch=$BRANCH&event=repository_dispatch&per_page=1" \
             | jq '.workflow_runs[0].id')
-      
+
           echo "Último run ID: $RUN_ID"
-      
+
           # Obtener los jobs del workflow run
           JOBS_JSON=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
             "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/jobs")
-      
+
           # Extraer el output rc_tag del job release-cert
           RC_TAG=$(echo $JOBS_JSON | jq -r '.jobs[] | select(.name=="release-cert") | .steps[] | select(.name=="Generar RC Tag dinámico") | .outputs.rc_tag')
-      
+
           echo "✅ RC Tag obtenido: $RC_TAG"
-      
+
           # Guardar como output del job
           echo "rc_tag=$RC_TAG" >> $GITHUB_OUTPUT
-
