@@ -100,3 +100,8 @@ jobs:
           echo "❌ Timeout esperando run $RUN_ID"
           exit 1
 
+      - name: Mostrar Issue Key de Jira
+        run: |
+          echo "🔑 Issue Key recibido: ${{ github.event.inputs.issue_key }}"
+
+
