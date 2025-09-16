@@ -107,22 +107,32 @@ jobs:
           echo "❌ Timeout esperando run $RUN_ID"
           exit 1
 
-      - name: Transicionar ticket en Jira
+      - name: Transicionar hacia RATIFICACION
+        env:
+          JIRA_USER: ${{ secrets.JIRA_USER }}
+          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          ISSUE_KEY: ${{ github.event.inputs.issue_key }}
+          TRANSITION_ID: ${{ github.event.inputs.transition_id }}
+          JIRA_SITE: "https://marketingpachas.atlassian.net"
         run: |
-          # Variables
-          ISSUE_KEY="${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}"
-          TRANSITION_ID="10"
+          echo "📌 Transiciones disponibles para el issue $ISSUE_KEY:"
+          curl -s -X GET \
+            -u "$JIRA_USER:$JIRA_TOKEN" \
+            -H "Accept: application/json" \
+            "$JIRA_SITE/rest/api/3/issue/$ISSUE_KEY/transitions" | jq .
 
-          echo "➡️ Transicionando issue $ISSUE_KEY a RATIFICACION"
+          echo "-----------------------------------------"
+          echo "➡️ Transicionando el issue $ISSUE_KEY hacia RATIFICACION"
 
-          # Llamada a la API de Jira
           curl -s -X POST \
-            -H "Authorization: Basic ${{ secrets.JIRA_AUTH }}" \
+            -u "$JIRA_USER:$JIRA_TOKEN" \
             -H "Content-Type: application/json" \
-            --data "{\"transition\":{\"id\":\"$TRANSITION_ID\"}}" \
-            "https://marketingpachas.atlassian.net/rest/api/3/issue/${ISSUE_KEY}/transitions"
+            --data-raw "{
+              \"transition\": { \"id\": \"$TRANSITION_ID\" }
+            }" \
+            "$JIRA_SITE/rest/api/3/issue/$ISSUE_KEY/transitions"
 
-          echo "✅ Petición de transición enviada para $ISSUE_KEY con id=$TRANSITION_ID"
+          echo -e "\n✅ Listo, CAMBIADO A RATIFICACION"
 
 
 
