@@ -4,20 +4,37 @@ on:
   repository_dispatch:
     types: [joborquestador-cert]
   workflow_dispatch:
+    inputs:
+      issue_key:
+        description: "Clave del ticket Jira (ej: ONE-12)"
+        required: false
+      branch_name:
+        description: "Rama asociada (ej: orquestador/ONE-12)"
+        required: false
 
 permissions:
   contents: write
 
-
 jobs:
   run-cert-workflows:
     runs-on: ubuntu-latest
-    outputs:
-      rc_tag: ${{ steps.get-tag.outputs.rc_tag }}
     steps:
+      - name: Determinar ISSUE_KEY y BRANCH_NAME
+        id: set-vars
+        run: |
+          ISSUE_KEY="${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}"
+          BRANCH_NAME="${{ github.event.inputs.branch_name || github.event.client_payload.branch_name || 'main' }}"
 
-      - name: Checkout
+          echo "📌 ISSUE_KEY=$ISSUE_KEY"
+          echo "🌿 BRANCH_NAME=$BRANCH_NAME"
+
+          echo "ISSUE_KEY=$ISSUE_KEY" >> $GITHUB_ENV
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+      - name: Checkout con la rama
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BRANCH_NAME }}
         
       - name: Verificar que orquestador-jobs.json exista
         run: |
