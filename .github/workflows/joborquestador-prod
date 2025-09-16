@@ -1,1 +1,100 @@
+name: Orquestador PROD
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run-prod-workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Leer RC Tag del JSON
+        id: read-tag
+        run: |
+          RC_TAG=$(jq -r '.prod[0].tag_name' orquestador-jobs.json)
+          echo "✅ RC Tag leído: $RC_TAG"
+          echo "rc_tag=$RC_TAG" >> $GITHUB_OUTPUT
+
+      - name: Disparar workflow deploy-prod
+        id: trigger
+        run: |
+          REPO="ricardops2211/repo-jira"
+          WORKFLOW_ID="deploy-prod.yml"
+          RC_TAG="${{ steps.read-tag.outputs.rc_tag }}"
+
+          START_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "start_ts=$START_TS" >> $GITHUB_OUTPUT
+
+          echo "🚀 Disparando workflow con RC_TAG=$RC_TAG ..."
+          curl -s -X POST \
+            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/$REPO/dispatches \
+            -d "{\"event_type\":\"trigger-prod\",\"client_payload\":{\"tag\":\"$RC_TAG\"}}"
+
+      - name: Esperar a que termine deploy-prod
+        run: |
+          set -euo pipefail
+          REPO="ricardops2211/repo-jira"
+          WORKFLOW_ID="deploy-prod.yml"
+          START_TS="${{ steps.trigger.outputs.start_ts }}"
+
+          echo "📌 Timestamp de inicio: $START_TS"
+
+          # Buscar el run más reciente después del START_TS
+          for i in {1..20}; do
+            RUNS=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?event=repository_dispatch&per_page=5")
+
+            RUN_ID=$(echo "$RUNS" | jq -r --arg ts "$START_TS" '.workflow_runs[] | select(.created_at > $ts) | .id' | head -n 1)
+
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+              echo "🎯 Run encontrado: $RUN_ID"
+              break
+            fi
+
+            echo "⌛ Esperando que aparezca el run..."
+            sleep 60
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "❌ No se encontró run nuevo"
+            exit 1
+          fi
+
+          # Polling hasta que termine
+          for i in {1..30}; do
+            RUN=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID")
+
+            STATUS=$(echo "$RUN" | jq -r '.status')
+            CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
+
+            echo "🔎 Run $RUN_ID → status=$STATUS conclusion=$CONCLUSION"
+
+            if [ "$STATUS" == "completed" ]; then
+              if [ "$CONCLUSION" == "success" ]; then
+                echo "✅ Workflow de PROD terminó OK"
+                exit 0
+              else
+                echo "❌ Workflow de PROD falló ($CONCLUSION)"
+                exit 1
+              fi
+            fi
+
+            sleep 30
+          done
+
+          echo "❌ Timeout esperando run $RUN_ID"
+          exit 1
 
