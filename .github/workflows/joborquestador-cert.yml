@@ -9,6 +9,10 @@ jobs:
     outputs:
       rc_tag: ${{ steps.get-tag.outputs.rc_tag }}
     steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        
       - name: Verificar que orquestador-jobs.json exista
         run: |
           if [ ! -f orquestador-jobs.json ]; then
