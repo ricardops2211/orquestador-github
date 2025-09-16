@@ -4,6 +4,13 @@ on:
   repository_dispatch:
     types: [jira-orquestador-produccion]
   workflow_dispatch:
+    inputs:
+      issue_key:
+        description: "Clave del ticket de Jira"
+        required: true
+      branch_name:
+        description: "Rama asociada al ticket"
+        required: true
 
 permissions:
   contents: write
