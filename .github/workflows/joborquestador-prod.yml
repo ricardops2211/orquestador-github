@@ -109,6 +109,8 @@ jobs:
 
       - name: Mostrar Issue Key de Jira
         run: |
-          echo "🔑 Issue Key recibido: ${{ github.event.inputs.issue_key }}"
+          ISSUE_KEY="${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}"
+          echo "🔑 Issue Key recibido: $ISSUE_KEY"
+
 
 
