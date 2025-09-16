@@ -26,7 +26,7 @@ jobs:
       - name: Lanzar workflow de produccion
         shell: bash
         env:
-          GH_TOKEN: ${{ env.PAT_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
           ISSUE_KEY: ${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}
           BRANCH_NAME: orquestador/${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}
         run: |
