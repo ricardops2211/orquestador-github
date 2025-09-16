@@ -12,32 +12,18 @@ jobs:
       - name: Descargar JSON de orquestador
         run: |
           curl -sL https://raw.githubusercontent.com/ricardops2211/orquestador/main/orquestador-jobs.json -o orquestador.json
-
+          cat orquestador.json  # 👈 ver contenido
+      
       - name: Instalar jq
         run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Iterar sobre sección CERT y disparar workflows
-        id: trigger
+      
+      - name: Iterar sobre sección CERT
         run: |
           CERTS=$(jq -c '.cert[]' orquestador.json)
           for workflow in $CERTS; do
-            REPO=$(echo $workflow | jq -r '.repo')
-            FILE=$(echo $workflow | jq -r '.workflow')
-            BRANCH=$(echo $workflow | jq -r '.branch')
-
-            echo "Disparando workflow $FILE en repo $REPO branch $BRANCH"
-
-            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-              https://api.github.com/repos/$REPO/dispatches \
-              -d "{\"event_type\":\"trigger-cert\",\"client_payload\":{\"workflow\":\"$FILE\",\"branch\":\"$BRANCH\"}}")
-
-            if [ "$RESPONSE" != "204" ]; then
-              echo "❌ Error disparando workflow $FILE en $REPO"
-              exit 1
-            fi
+            echo $workflow
           done
+
 
       - name: Esperar 30 segundos para que el workflow de CERT empiece
         run: sleep 30
