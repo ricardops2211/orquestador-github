@@ -2,7 +2,7 @@ name: Orquestador PROD
 
 on:
   repository_dispatch:
-    types: [jira-orquestador-producciosnss]
+    types: [jira-orquestador-produccion]
   workflow_dispatch:
     inputs:
       issue_key:
