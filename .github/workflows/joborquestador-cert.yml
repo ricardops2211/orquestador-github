@@ -1,9 +1,15 @@
 name: Orquestador CERT
 
 on:
-  repository_dispatch:
-    types: [jira-orquestador-certificacionssss]
   workflow_dispatch:
+    inputs:
+      issue_key:
+        description: "Clave de Jira"
+        required: true
+      branch_name:
+        description: "Rama"
+        required: true
+
 
 permissions:
   contents: write
