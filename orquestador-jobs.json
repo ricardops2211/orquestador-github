@@ -2,7 +2,8 @@
   "cert": [
     {
       "repo": "ricardops2211/repo-jira",
-      "workflow": "deploy-cert.yml"
+      "workflow": "deploy-cert.yml",
+      "branch": "main"
     }
   ],
   "prod": [
