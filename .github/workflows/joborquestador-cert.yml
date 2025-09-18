@@ -47,130 +47,155 @@ jobs:
       - name: Instalar jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Listar runs de git hub actions
+      - name: Disparar workflows CERT desde JSON
         id: trigger-cert
         run: |
-          REPO="ricardops2211/repo-jira"
-          WORKFLOW_ID="deploy-cert.yml"
-
-          RESPONSE=$(curl -s -X POST \
-            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/$REPO/dispatches \
-            -d '{"event_type":"trigger-cert"}')
-
-          echo "🔔 Workflow dispatch enviado. Esperando a que aparezca el run..."
-          
-          # Listar runs recientes y tomar el último
-          RUN_ID=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?per_page=1" \
-            | jq -r '.workflow_runs[0].id')
-
-          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
-
-
-      - name: Disparar workflow deploy-cert
-        id: trigger
-        run: |
-          REPO="ricardops2211/repo-jira"
-          WORKFLOW_ID="deploy-cert.yml"
-
-          # Tomamos el timestamp actual (antes de disparar)
-          START_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "start_ts=$START_TS" >> $GITHUB_OUTPUT
-
-          echo "🚀 Disparando workflow..."
-          curl -s -X POST \
-            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/$REPO/dispatches \
-            -d '{"event_type":"trigger-cert"}'
-
-      - name: Esperar workflow deploy-cert
-        id: wait
-        run: |
           set -euo pipefail
-          REPO="ricardops2211/repo-jira"
-          WORKFLOW_ID="deploy-cert.yml"
-          START_TS="${{ steps.trigger.outputs.start_ts }}"
 
-          echo "📌 Timestamp de inicio: $START_TS"
+          echo "📄 Leyendo sección cert de orquestador-jobs.json"
 
-          for i in {1..30}; do
-            RUNS=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+          COUNT=$(jq '.cert | length' orquestador-jobs.json)
+          echo "Encontrados $COUNT workflows en cert"
+
+          for i in $(seq 0 $((COUNT-1))); do
+            REPO=$(jq -r ".cert[$i].repo" orquestador-jobs.json)
+            WORKFLOW_ID=$(jq -r ".cert[$i].workflow" orquestador-jobs.json)
+            BRANCH=$(jq -r ".cert[$i].branch" orquestador-jobs.json)
+
+            echo "➡️ Disparando workflow $WORKFLOW_ID en $REPO (branch=$BRANCH)"
+
+            START_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+            curl -s -X POST \
+              -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
               -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?event=repository_dispatch&per_page=5")
+              https://api.github.com/repos/$REPO/dispatches \
+              -d "{\"event_type\":\"trigger-cert\",\"client_payload\":{\"branch\":\"$BRANCH\"}}"
 
-            # Filtrar solo runs posteriores al timestamp
-            RUN_ID=$(echo "$RUNS" | jq -r --arg ts "$START_TS" '.workflow_runs[] | select(.created_at > $ts) | .id' | head -n 1)
+            echo "⏳ Esperando run posterior a $START_TS..."
 
-            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
-              echo "🎯 Encontrado run nuevo: $RUN_ID"
-              break
+            for j in {1..30}; do
+              RUN_ID=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?event=repository_dispatch&per_page=5" \
+                | jq -r --arg ts "$START_TS" '.workflow_runs[] | select(.created_at > $ts) | .id' | head -n 1)
+
+              if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+                echo "🎯 Encontrado run nuevo: $RUN_ID"
+                break
+              fi
+              echo "⌛ Intento $j esperando run..."
+              sleep 20
+            done
+
+            if [ -z "${RUN_ID:-}" ]; then
+              echo "❌ No se encontró run nuevo para $WORKFLOW_ID"
+              exit 1
             fi
 
-            echo "⌛ Esperando a que aparezca el run..."
-            sleep 60
+            # Polling del run hasta que termine
+            for j in {1..30}; do
+              RUN=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID")
+
+              STATUS=$(echo "$RUN" | jq -r '.status')
+              CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
+
+              echo "🔎 Run $RUN_ID → status=$STATUS conclusion=$CONCLUSION"
+
+              if [ "$STATUS" == "completed" ]; then
+                if [ "$CONCLUSION" == "success" ]; then
+                  echo "✅ Workflow $WORKFLOW_ID en $REPO terminó bien"
+                  break
+                else
+                  echo "❌ Workflow $WORKFLOW_ID falló ($CONCLUSION)"
+                  exit 1
+                fi
+              fi
+              sleep 20
+            done
           done
 
-          if [ -z "$RUN_ID" ]; then
-            echo "❌ No se encontró run nuevo después de $START_TS"
+      - name: Obtener RC Tag dinámicamente desde workflows CERT
+        id: get-tag
+        run: |
+          set -euo pipefail
+          PAT_TOKEN="${{ secrets.PAT_TOKEN }}"
+
+          echo "🔎 Buscando rc_tag(s) en orquestador-jobs.json -> sección cert"
+          if [ ! -f orquestador-jobs.json ]; then
+            echo "❌ orquestador-jobs.json no encontrado!"
             exit 1
           fi
 
-          # Polling al run específico
-          for i in {1..30}; do
-            RUN=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID")
+          COUNT=$(jq '.cert | length' orquestador-jobs.json)
+          echo "🔢 Entradas en cert: $COUNT"
 
-            STATUS=$(echo "$RUN" | jq -r '.status')
-            CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
+          rc_tags=()
+          for i in $(seq 0 $((COUNT-1))); do
+            REPO=$(jq -r ".cert[$i].repo" orquestador-jobs.json)
+            WORKFLOW_ID=$(jq -r ".cert[$i].workflow" orquestador-jobs.json)
+            BRANCH=$(jq -r '.cert['"$i"'].branch // "main"' orquestador-jobs.json)
 
-            echo "🔎 Run $RUN_ID → status=$STATUS conclusion=$CONCLUSION"
+            echo "➡️ Revisando: repo=$REPO workflow=$WORKFLOW_ID branch=$BRANCH"
 
-            if [ "$STATUS" == "completed" ]; then
-              if [ "$CONCLUSION" == "success" ]; then
-                echo "✅ Workflow terminó bien"
-                exit 0
-              else
-                echo "❌ Workflow terminó con fallo ($CONCLUSION)"
-                exit 1
-              fi
+            # Obtener último run (más reciente) para ese workflow/branch/evento repository_dispatch
+            RUN_ID=$(curl -s -H "Authorization: token $PAT_TOKEN" \
+              "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?branch=$BRANCH&event=repository_dispatch&per_page=5" \
+              | jq -r '.workflow_runs[0].id // empty')
+
+            if [ -z "$RUN_ID" ]; then
+              echo "⚠️ No se encontró run para $WORKFLOW_ID en $REPO (branch $BRANCH). Saltando..."
+              continue
+            fi
+            echo "   ▶ Run encontrado: $RUN_ID"
+
+            ARTIFACT_URL=$(curl -s -H "Authorization: token $PAT_TOKEN" \
+              "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+              | jq -r '.artifacts[] | select(.name=="rc-tag") | .archive_download_url // empty')
+
+            if [ -z "$ARTIFACT_URL" ]; then
+              echo "⚠️ No se encontró artifact 'rc-tag' en run $RUN_ID. Saltando..."
+              continue
             fi
 
-            sleep 20
+            mkdir -p ./artifact_$i
+            curl -sL -H "Authorization: token $PAT_TOKEN" "$ARTIFACT_URL" -o rc-tag-$i.zip
+            unzip -o rc-tag-$i.zip -d ./artifact_$i >/dev/null 2>&1 || true
+
+            # intentar leer rc_tag desde rc_tag.json o cualquier json dentro del artifact
+            if [ -f "./artifact_$i/rc_tag.json" ]; then
+              RC_TAG_ITEM=$(jq -r '.rc_tag' "./artifact_$i/rc_tag.json" 2>/dev/null || true)
+            else
+              RC_TAG_ITEM=$(jq -r '.. | objects | .rc_tag? // empty' ./artifact_$i/* 2>/dev/null | head -n 1 || true)
+            fi
+
+            if [ -z "$RC_TAG_ITEM" ]; then
+              echo "⚠️ No se pudo extraer rc_tag del artifact en run $RUN_ID"
+              continue
+            fi
+
+            echo "   ✅ rc_tag obtenido: $RC_TAG_ITEM"
+            rc_tags+=("$RC_TAG_ITEM")
           done
 
-          echo "❌ Timeout esperando run $RUN_ID"
-          exit 1
+          if [ "${#rc_tags[@]}" -eq 0 ]; then
+            echo "❌ No se encontraron rc_tag en ningún workflow cert"
+            exit 1
+          fi
 
-          
-      - name: Obtener RC Tag del workflow deploy-cert
-        id: get-tag
-        run: |
-          REPO="ricardops2211/repo-jira"
-          WORKFLOW_ID="deploy-cert.yml"
-          BRANCH="main"
-      
-          echo "⏳ Buscando último run..."
-          RUN_ID=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?branch=$BRANCH&event=repository_dispatch&per_page=1" \
-            | jq '.workflow_runs[0].id')
-      
-          echo "Último run: $RUN_ID"
-      
-          ARTIFACT_URL=$(curl -s -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/artifacts" \
-            | jq -r '.artifacts[] | select(.name=="rc-tag") | .archive_download_url')
-      
-          curl -sL -H "Authorization: token ${{ secrets.PAT_TOKEN }}" $ARTIFACT_URL -o rc-tag.zip
-          unzip -o rc-tag.zip -d ./artifact
-      
-          RC_TAG=$(jq -r '.rc_tag' ./artifact/rc_tag.json)
-          echo "✅ RC Tag encontrado: $RC_TAG"
-          echo "rc_tag=$RC_TAG" >> $GITHUB_OUTPUT
+          # deduplicar y preparar outputs
+          ALL=$(printf "%s\n" "${rc_tags[@]}" | awk '!seen[$0]++' | paste -sd "," -)
+          FIRST=$(printf "%s\n" "${rc_tags[@]}" | awk '!seen[$0]++' | head -n1)
+
+          echo "🔔 rc_tags_all=$ALL"
+          echo "🔔 rc_tag (primer valor)=$FIRST"
+
+          # Setear outputs (usar $GITHUB_OUTPUT)
+          echo "rc_tag=$FIRST" >> $GITHUB_OUTPUT
+          echo "rc_tags_all=$ALL" >> $GITHUB_OUTPUT
+
 
       - name: Reemplazar RC Tag en orquestador-jobs.json
         run: |
@@ -191,6 +216,3 @@ jobs:
           git commit -m "🔖 Update prod tag_name con RC Tag ${{ steps.get-tag.outputs.rc_tag }}" || echo "No hay cambios que commitear"
 
           git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/ricardops2211/orquestador-github.git "orquestador/$ISSUE_KEY"
-
-
-
