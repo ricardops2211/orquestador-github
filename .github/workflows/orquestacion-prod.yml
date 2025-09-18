@@ -28,7 +28,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
           ISSUE_KEY: ${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}
-          BRANCH_NAME: orquestador/${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}
+          BRANCH_NAME: ${{ github.event.inputs.branch_name || github.event.client_payload.branch_name }}
         run: |
           echo "🚀 Disparando workflow de produccion en la rama $BRANCH_NAME para el issue $ISSUE_KEY ..."
           curl -i -s -X POST \
