@@ -10,7 +10,7 @@
     {
       "repo": "ricardops2211/repo-jira",
       "workflow": "deploy-prod.yml",
-      "tag_name": "RC-20250918-948c"
+      "tag_name": "RC-20250918-b24f"
     }
   ],
   "version": "2.0.0"
