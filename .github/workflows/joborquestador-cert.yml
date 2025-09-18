@@ -197,12 +197,18 @@ jobs:
           echo "rc_tags_all=$ALL" >> $GITHUB_OUTPUT
 
 
-      - name: Reemplazar RC Tag en orquestador-jobs.json
+      - name: Reemplazar RC Tags en orquestador-jobs.json (uno a uno)
         run: |
-          RC_TAG="${{ steps.get-tag.outputs.rc_tag }}"
-          echo "🔧 Reemplazando PONER-RCTAGNAME por $RC_TAG en orquestador-jobs.json"
+          echo "🔧 Reemplazando prod[i].tag_name con los rc_tags obtenidos"
+          IFS=',' read -ra TAGS <<< "${{ steps.get-tag.outputs.rc_tags_all }}"
       
-          jq --arg tag "$RC_TAG" '.prod[0].tag_name = $tag' orquestador-jobs.json > tmp.json && mv tmp.json orquestador-jobs.json
+          TMP=orquestador-jobs.json
+          for i in "${!TAGS[@]}"; do
+            TAG="${TAGS[$i]}"
+            echo "  ➡️ prod[$i].tag_name = $TAG"
+            jq --arg tag "$TAG" --argjson idx $i \
+              '.prod[$idx].tag_name = $tag' "$TMP" > tmp.json && mv tmp.json "$TMP"
+          done
       
           echo "📄 Archivo final:"
           cat orquestador-jobs.json
