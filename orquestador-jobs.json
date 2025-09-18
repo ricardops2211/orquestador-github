@@ -15,7 +15,7 @@
     {
       "repo": "ricardops2211/repo-jira",
       "workflow": "deploy-prod.yml",
-      "tag_name": "PONER-RC-AQUI"
+      "tag_name": "RC-20250918-1f47"
     },
     {
       "repo": "ricardops2211/channel-youtube-kids",
