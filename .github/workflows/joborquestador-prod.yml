@@ -25,54 +25,22 @@ jobs:
       - name: Instalar jq y unzip
         run: sudo apt-get update && sudo apt-get install -y jq unzip
 
-      - name: Obtener RC Tag dinámicamente desde workflows PROD
+      - name: Obtener RC Tag desde orquestador-jobs.json (PROD)
         id: get-tag
         run: |
           set -euo pipefail
-          PAT_TOKEN="${{ secrets.PAT_TOKEN }}"
 
           COUNT=$(jq '.prod | length' orquestador-jobs.json)
           echo "🔢 Entradas en prod: $COUNT"
 
           rc_tags=()
           for i in $(seq 0 $((COUNT-1))); do
-            REPO=$(jq -r ".prod[$i].repo" orquestador-jobs.json)
-            WORKFLOW_ID=$(jq -r ".prod[$i].workflow" orquestador-jobs.json)
-            BRANCH=$(jq -r ".prod[$i].branch // \"main\"" orquestador-jobs.json)
-
-            echo "➡️ Revisando: repo=$REPO workflow=$WORKFLOW_ID branch=$BRANCH"
-
-            RUN_ID=$(curl -s -H "Authorization: token $PAT_TOKEN" \
-              "https://api.github.com/repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?branch=$BRANCH&event=repository_dispatch&per_page=5" \
-              | jq -r '.workflow_runs[0].id // empty')
-
-            if [ -z "$RUN_ID" ]; then
-              echo "⚠️ No se encontró run para $WORKFLOW_ID en $REPO"
-              continue
-            fi
-
-            ARTIFACT_URL=$(curl -s -H "Authorization: token $PAT_TOKEN" \
-              "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/artifacts" \
-              | jq -r '.artifacts[] | select(.name=="rc-tag") | .archive_download_url // empty')
-
-            if [ -z "$ARTIFACT_URL" ]; then
-              echo "⚠️ No se encontró artifact rc-tag"
-              continue
-            fi
-
-            mkdir -p ./artifact_prod_$i
-            curl -sL -H "Authorization: token $PAT_TOKEN" "$ARTIFACT_URL" -o rc-tag-prod-$i.zip
-            unzip -o rc-tag-prod-$i.zip -d ./artifact_prod_$i >/dev/null 2>&1 || true
-
-            if [ -f "./artifact_prod_$i/rc_tag.json" ]; then
-              RC_TAG_ITEM=$(jq -r '.rc_tag' "./artifact_prod_$i/rc_tag.json")
-            else
-              RC_TAG_ITEM=$(jq -r '.. | objects | .rc_tag? // empty' ./artifact_prod_$i/* | head -n 1)
-            fi
-
-            if [ -n "$RC_TAG_ITEM" ]; then
-              echo "   ✅ rc_tag obtenido: $RC_TAG_ITEM"
+            RC_TAG_ITEM=$(jq -r ".prod[$i].tag_name" orquestador-jobs.json)
+            if [ -n "$RC_TAG_ITEM" ] && [ "$RC_TAG_ITEM" != "null" ]; then
+              echo "✅ rc_tag obtenido de prod[$i]: $RC_TAG_ITEM"
               rc_tags+=("$RC_TAG_ITEM")
+            else
+              echo "⚠️ prod[$i] no tiene tag_name válido"
             fi
           done
 
@@ -188,7 +156,3 @@ jobs:
             "$JIRA_SITE/rest/api/3/issue/$ISSUE_KEY/transitions"
 
           echo -e "\n✅ Listo, CAMBIADO A RATIFICACION"
-
-
-
-
