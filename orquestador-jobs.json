@@ -4,13 +4,23 @@
       "repo": "ricardops2211/repo-jira",
       "workflow": "deploy-cert.yml",
       "branch": "main"
+    },
+    {
+      "repo": "ricardops2211/channel-youtube-kids",
+      "workflow": "channel-cert.yml",
+      "branch": "main"
     }
   ],
   "prod": [
     {
       "repo": "ricardops2211/repo-jira",
       "workflow": "deploy-prod.yml",
-      "tag_name": "RC-20250918-b24f"
+      "tag_name": "PONER-RC-AQUI"
+    },
+    {
+      "repo": "ricardops2211/channel-youtube-kids",
+      "workflow": "channel-prod.yml",
+      "tag_name": "PONER-RC-AQUI"
     }
   ],
   "version": "2.0.0"
