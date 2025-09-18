@@ -2,15 +2,13 @@
   "cert": [
     {
       "repo": "ricardops2211/repo-jira",
-      "workflow": "deploy-cert.yml",
-      "branch": "main"
+      "workflow": "deploy-cert.yml"
     }
   ],
   "prod": [
     {
       "repo": "ricardops2211/repo-jira",
       "workflow": "deploy-prod.yml",
-      "branch": "main",
       "tag_name": "RC-20250918-948c"
     }
   ],
