@@ -81,7 +81,7 @@ jobs:
                 | jq -r --arg ts "$START_TS" '.workflow_runs[] | select(.created_at > $ts) | .id' | head -n 1)
 
               if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
-                echo "🎯 Encontrado run nuevo: $RUN_ID"
+                echo "🎯 Corriendo action y este es el id: $RUN_ID"
                 break
               fi
               echo "⌛ Intento $j esperando run..."
