@@ -28,7 +28,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
           ISSUE_KEY: ${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}
-          BRANCH_NAME: orquestador/${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}
+          BRANCH_NAME: ${{ github.event.inputs.branch_name || github.event.client_payload.branch_name }}
         run: |
           echo "📌 ISSUE_KEY: $ISSUE_KEY"
           echo "🌿 BRANCH_NAME: $BRANCH_NAME"
