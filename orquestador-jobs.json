@@ -15,12 +15,12 @@
     {
       "repo": "ricardops2211/repo-jira",
       "workflow": "deploy-prod.yml",
-      "tag_name": "PONER-RC"
+      "tag_name": "RC-20250924-be28"
     },
     {
       "repo": "ricardops2211/channel-youtube-kids",
       "workflow": "channel-prod.yml",
-      "tag_name": "PONER-RC"
+      "tag_name": "RC-20250924-ca43"
     }
   ],
   "version": "2.0.0"
