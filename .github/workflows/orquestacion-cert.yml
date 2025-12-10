@@ -1,49 +1,29 @@
-name: Orquestador CERT
+name: Workflow Reusable
 
 on:
-  repository_dispatch:
-    types: [jira-orquestador-certificacion]
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      issue_key:
-        description: "Clave del ticket de Jira"
+      node-version:
+        type: string
         required: true
-      branch_name:
-        description: "Rama asociada al ticket"
-        required: true
-
-permissions:
-  contents: write
+      entorno:
+        type: string
+        required: false
+        default: "desarrollo"
 
 jobs:
-  run-cert-workflows:
+  build:
     runs-on: ubuntu-latest
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Lanzar workflow de congelamiento
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
-          ISSUE_KEY: ${{ github.event.inputs.issue_key || github.event.client_payload.issue_key }}
-          BRANCH_NAME: ${{ github.event.inputs.branch_name || github.event.client_payload.branch_name }}
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Mostrar valores
         run: |
-          echo "📌 ISSUE_KEY: $ISSUE_KEY"
-          echo "🌿 BRANCH_NAME: $BRANCH_NAME"
-
-          echo "🚀 Disparando workflow de congelamiento en la rama $BRANCH_NAME para el issue $ISSUE_KEY ..."
-
-          curl -i -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/ricardops2211/orquestador-github/actions/workflows/joborquestador-cert.yml/dispatches \
-            -d "{
-                  \"ref\": \"$BRANCH_NAME\",
-                  \"inputs\": {
-                    \"issue_key\": \"$ISSUE_KEY\",
-                    \"branch_name\": \"$BRANCH_NAME\"
-                  }
-                }"
-
+          echo "Node version: ${{ inputs.node-version }}"
+          echo "Entorno: ${{ inputs.entorno }}"
