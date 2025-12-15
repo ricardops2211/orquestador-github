@@ -9,7 +9,6 @@ on:
       entorno:
         type: string
         required: false
-        default: "desarrollo"
 
 jobs:
   build:
